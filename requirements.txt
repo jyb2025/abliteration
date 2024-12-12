@@ -1,0 +1,8 @@
+accelerate
+bitsandbytes
+einops
+huggingface-hub
+jaxtyping
+torch
+tqdm
+transformers
