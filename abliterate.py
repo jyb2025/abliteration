@@ -155,17 +155,22 @@ def apply_abliteration(model):
 
 if __name__ == "__main__":
     torch.inference_mode()
+    quant_config = (
+        BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+        if args.device != "cpu"
+        else None
+    )
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         trust_remote_code=True,
         torch_dtype=torch.float16,
         low_cpu_mem_usage=True,
         device_map=args.device,
-        quantization_config=BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
-        ),
+        quantization_config=quant_config,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         args.model, trust_remote_code=True, device_map=args.device
