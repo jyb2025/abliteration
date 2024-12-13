@@ -30,7 +30,8 @@ parser.add_argument(
     default="auto",
     help="Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU",
 )
-parser.add_argument("--output", "-o", type=str, required=True, help="Output directory")
+parser.add_argument("--output", "-o", type=str,
+                    required=True, help="Output directory")
 parser.add_argument(
     "--no-chat",
     action="store_true",
@@ -56,7 +57,8 @@ quant.add_argument(
     default=False,
     help="Load model in 8-bit precision using bitsandbytes",
 )
-quant.add_argument("--awq", action="store_true", default=False, help="Load awq model")
+quant.add_argument("--awq", action="store_true",
+                   default=False, help="Load awq model")
 args = parser.parse_args()
 
 
@@ -66,7 +68,8 @@ def direction_ablation_hook(
 ):
     proj = (
         einops.einsum(
-            activation, direction.view(-1, 1), "... d_act, d_act single -> ... single"
+            activation, direction.view(-1,
+                                       1), "... d_act, d_act single -> ... single"
         )
         * direction
     )
@@ -85,7 +88,8 @@ class AblationDecoderLayer(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Tuple[
-        torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
+        torch.FloatTensor, Optional[Tuple[torch.FloatTensor,
+                                          torch.FloatTensor]]
     ]:
         assert not output_attentions
 
@@ -220,9 +224,17 @@ if __name__ == "__main__":
 
     conversation = []
     streamer = TextStreamer(tokenizer)
-    print(f"Abliteration finished! Now you can chat with the model.")
+    print("\n=======================================================\n")
+    print("Abliteration finished! Now you can chat with the model.")
+    print("Type /clear to clear history, /exit to quit.")
     while True:
         prompt = input("User> ")
+        if prompt == "/clear":
+            conversation = []
+            print("! History cleared.")
+            continue
+        elif prompt == "/exit":
+            break
         conversation.append({"role": "user", "content": prompt})
         toks = tokenizer.apply_chat_template(
             conversation=conversation, add_generation_prompt=True, return_tensors="pt"
@@ -233,6 +245,6 @@ if __name__ == "__main__":
         )
 
         decoded = tokenizer.batch_decode(
-            gen[0][len(toks[0]) :], skip_special_tokens=True
+            gen[0][len(toks[0]):], skip_special_tokens=True
         )
         conversation.append({"role": "assistant", "content": "".join(decoded)})
