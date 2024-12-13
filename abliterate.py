@@ -6,6 +6,7 @@ import jaxtyping
 import torch.nn as nn
 from tqdm import tqdm
 from typing import Optional, Tuple
+from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -35,6 +36,12 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Do not chat with model after abliteration",
+)
+parser.add_argument(
+    "--deccp",
+    action="store_true",
+    default=False,
+    help="For Chinese models, in specific topics",
 )
 quant = parser.add_mutually_exclusive_group()
 quant.add_argument(
@@ -100,6 +107,10 @@ def compute_refusals(model, tokenizer):
         harmful_list = json.load(f)
     with open("./harmless.json", "r", encoding="utf-8") as f:
         harmless_list = json.load(f)
+
+    if args.deccp:
+        deccp_list = load_dataset("augmxnt/deccp", split="censored")
+        harmful_list += deccp_list["text"]
 
     harmful_tokens = [
         tokenizer.apply_chat_template(
