@@ -10,6 +10,7 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextStreamer,
+    AwqConfig,
     BitsAndBytesConfig,
 )
 
@@ -28,14 +29,27 @@ parser.add_argument(
     default="auto",
     help="Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU",
 )
-parser.add_argument("--output", "-o", type=str,
-                    required=True, help="Output directory")
+parser.add_argument("--output", "-o", type=str, required=True, help="Output directory")
 parser.add_argument(
     "--no-chat",
     action="store_true",
     default=False,
     help="Do not chat with model after abliteration",
 )
+quant = parser.add_mutually_exclusive_group()
+quant.add_argument(
+    "--load-in-4bit",
+    action="store_true",
+    default=False,
+    help="Load model in 4-bit precision using bitsandbytes",
+)
+quant.add_argument(
+    "--load-in-8bit",
+    action="store_true",
+    default=False,
+    help="Load model in 8-bit precision using bitsandbytes",
+)
+quant.add_argument("--awq", action="store_true", default=False, help="Load awq model")
 args = parser.parse_args()
 
 
@@ -45,8 +59,7 @@ def direction_ablation_hook(
 ):
     proj = (
         einops.einsum(
-            activation, direction.view(-1,
-                                       1), "... d_act, d_act single -> ... single"
+            activation, direction.view(-1, 1), "... d_act, d_act single -> ... single"
         )
         * direction
     )
@@ -65,8 +78,7 @@ class AblationDecoderLayer(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Tuple[
-        torch.FloatTensor, Optional[Tuple[torch.FloatTensor,
-                                          torch.FloatTensor]]
+        torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
     ]:
         assert not output_attentions
 
@@ -155,15 +167,23 @@ def apply_abliteration(model):
 
 if __name__ == "__main__":
     torch.inference_mode()
-    quant_config = (
-        BitsAndBytesConfig(
+    if args.load_in_4bit:
+        quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_use_double_quant=True,
         )
-        if args.device != "cpu"
-        else None
-    )
+    elif args.load_in_8bit:
+        quant_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_enable_fp32_cpu_offload=True,
+            llm_int8_has_fp16_weight=True,
+        )
+    elif args.awq:
+        quant_config = AwqConfig()
+    else:
+        quant_config = None
+
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         trust_remote_code=True,
@@ -202,6 +222,6 @@ if __name__ == "__main__":
         )
 
         decoded = tokenizer.batch_decode(
-            gen[0][len(toks[0]):], skip_special_tokens=True
+            gen[0][len(toks[0]) :], skip_special_tokens=True
         )
         conversation.append({"role": "assistant", "content": "".join(decoded)})
