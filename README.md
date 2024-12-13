@@ -26,7 +26,7 @@ Now your model will be abliterated and saved to `<output_dir>`. Once it finishes
 **Full arguments**:
 
 ```shell
-usage: abliterate.py [-h] --model MODEL [--device DEVICE] --output OUTPUT [--no-chat]
+usage: abliterate.py [-h] --model MODEL [--device DEVICE] --output OUTPUT [--no-chat] [--load-in-4bit | --load-in-8bit | --awq]
 
 Make abliterated models
 
@@ -35,11 +35,13 @@ options:
   --model MODEL, -m MODEL
                         Your model directory or huggingface model ID
   --device DEVICE, -d DEVICE
-                        Target device to process abliteration. Warning, bitsandbytes
-                        quantization DOES NOT support CPU
+                        Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU
   --output OUTPUT, -o OUTPUT
                         Output directory
   --no-chat             Do not chat with model after abliteration
+  --load-in-4bit        Load model in 4-bit precision using bitsandbytes
+  --load-in-8bit        Load model in 8-bit precision using bitsandbytes
+  --awq                 Load awq model
 ```
 
 ## Credits
