@@ -23,10 +23,12 @@ python abliteration.py -m <path_to_your_model> -o <output_dir>
 
 Now your model will be abliterated and saved to `<output_dir>`. Once it finishes, you can immediately chat with your abliterated model in the terminal.
 
+Note: for Chinese models such as Qwen, deepseek, Yi, etc., I recommend adding `--deccp` to suppress refusal in certain topics.
+
 **Full arguments**:
 
 ```shell
-usage: abliterate.py [-h] --model MODEL [--device DEVICE] --output OUTPUT [--no-chat] [--load-in-4bit | --load-in-8bit | --awq]
+usage: abliterate.py [-h] --model MODEL [--device DEVICE] --output OUTPUT [--no-chat] [--deccp] [--load-in-4bit | --load-in-8bit | --awq]
 
 Make abliterated models
 
@@ -39,6 +41,7 @@ options:
   --output OUTPUT, -o OUTPUT
                         Output directory
   --no-chat             Do not chat with model after abliteration
+  --deccp               For Chinese models, in specific topics
   --load-in-4bit        Load model in 4-bit precision using bitsandbytes
   --load-in-8bit        Load model in 8-bit precision using bitsandbytes
   --awq                 Load awq model
