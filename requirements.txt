@@ -1,4 +1,5 @@
 accelerate
+autoawq
 bitsandbytes
 datasets
 einops
