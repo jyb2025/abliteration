@@ -57,12 +57,6 @@ parser.add_argument(
     "--flash-attn", action="store_true", default=False, help="Use flash attention 2"
 )
 parser.add_argument(
-    "--chat",
-    action="store_true",
-    default=False,
-    help="Chat with the model after abliteration",
-)
-parser.add_argument(
     "--deccp",
     action="store_true",
     default=False,
@@ -161,6 +155,7 @@ def compute_refusals(
     harmless_mean = torch.stack(harmless_hidden).mean(dim=0)
     refusal_dir = harmful_mean - harmless_mean
     refusal_dir = refusal_dir / refusal_dir.norm()
+    print(refusal_dir)
     return refusal_dir
 
 
@@ -251,6 +246,8 @@ if __name__ == "__main__":
         quantization_config=quant_config,
         attn_implementation="flash_attention_2" if args.flash_attn else None,
     )
+    model.requires_grad_(False)
+    
     assert args.skip_begin + args.skip_end < len(
         model.model.layers
     ), "Too many layers to skip"
@@ -261,39 +258,24 @@ if __name__ == "__main__":
     print("Computing refusal dir...")
     refusal_dir = compute_refusals(model, tokenizer, args.layer_fraction)
     print("Applying refusal dir...")
+
+    if args.device != "cpu":
+        # WARNING: Reloading model to CPU to apply abliteration is necessary, for cuda device will add slight error to other modules such as q,k,v proj or mlp, and ends up messing up the model.
+        print("Reloading model to CPU...")
+        del model
+        torch.cuda.empty_cache()
+        gc.collect()
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            trust_remote_code=True,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            device_map="cpu",
+        )
+
     model = apply_abliteration(
         model, refusal_dir, args.skip_begin, args.skip_end, args.scale_factor
     )
     print(f"Saving abliterated model to {args.output}...")
     model.save_pretrained(args.output)
     tokenizer.save_pretrained(args.output)
-
-    if not args.chat:
-        exit(0)
-
-    conversation = []
-    streamer = TextStreamer(tokenizer)
-    print("\n=======================================================\n")
-    print("Abliteration finished! Now you can chat with the model.")
-    print("Type /clear to clear history, /exit to quit.")
-    while True:
-        prompt = input("User> ")
-        if prompt == "/clear":
-            conversation = []
-            print("! History cleared.")
-            continue
-        elif prompt == "/exit":
-            break
-        conversation.append({"role": "user", "content": prompt})
-        toks = tokenizer.apply_chat_template(
-            conversation=conversation, add_generation_prompt=True, return_tensors="pt"
-        )
-
-        gen = model.generate(
-            toks.to(model.device), streamer=streamer, max_new_tokens=256
-        )
-
-        decoded = tokenizer.batch_decode(
-            gen[0][len(toks[0]) :], skip_special_tokens=True
-        )
-        conversation.append({"role": "assistant", "content": "".join(decoded)})
