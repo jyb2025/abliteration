@@ -1,10 +1,7 @@
 accelerate
-autoawq
 bitsandbytes
 datasets
-einops
 huggingface-hub
-jaxtyping
 torch
 tqdm
 transformers
