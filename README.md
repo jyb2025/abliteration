@@ -2,7 +2,9 @@
 
 Make abliterated models using transformers, easy and fast.
 
-I have tested this code on [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) and [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct). Llama-3.2 worked well, but Qwen2.5-7B gave me garbage results. I have no idea why, maybe Qwen model needs TransformerLens. 😢
+The code has been tested on Llama-3.2, Qwen2.5-Coder, Ministral-8b. Note: applying abliteration needs to load the model into memory and compute by CPU. Please make sure you have sufficient memory capacity.
+
+> The reason why I use CPU to apply abliteration is that cuda device will add slight error (for example, xxxE-12) to the model projects, and ends up messing up the whole model, which cost me a lot of time to debug. 💢
 
 ## Usage
 
@@ -34,7 +36,7 @@ This option is for Chinese models, to abliterate it from specific topics. To use
 1. abliterate the model without `--deccp` option first, to get a normal abliterated model.
 2. use the `--deccp` option to abliterate the model generated in step 1 from specific topics.
 
-If you find that the abliteration process does not work well, try to adjust different `proj` in `abliteratie.py` -> `apply_abliteration()`:
+If you find that the abliteration process does not work well, you can try to modify `--layer-fraction` parameter, or try to adjust different `proj` in `abliteratie.py` -> `apply_abliteration()`:
 
 ```python
 lm_model.layers[layer_idx].self_attn.o_proj.weight = modify_tensor(
@@ -55,7 +57,7 @@ Available targets can be found in [transformers model architectures](https://git
 
 ```shell
 usage: abliterate.py [-h] --model MODEL [--device {auto,cuda,cpu}] --output OUTPUT [--skip-begin SKIP_BEGIN] [--skip-end SKIP_END] [--layer-fraction LAYER_FRACTION]
-                     [--scale-factor SCALE_FACTOR] [--flash-attn] [--chat] [--deccp] [--load-in-4bit | --load-in-8bit]
+                     [--scale-factor SCALE_FACTOR] [--flash-attn] [--deccp] [--load-in-4bit | --load-in-8bit]
 
 Make abliterated models
 
@@ -75,7 +77,6 @@ options:
   --scale-factor SCALE_FACTOR
                         Scale factor for ablation. Use a negative scale-factor to encourage refusal. >=1 makes no sense
   --flash-attn          Use flash attention 2
-  --chat                Chat with the model after abliteration
   --deccp               For Chinese models, in specific topics
   --load-in-4bit        Load model in 4-bit precision using bitsandbytes
   --load-in-8bit        Load model in 8-bit precision using bitsandbytes
