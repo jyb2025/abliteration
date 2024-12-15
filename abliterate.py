@@ -27,7 +27,8 @@ parser.add_argument(
     "--device",
     "-d",
     type=str,
-    default="cuda",
+    choices=["auto", "cuda", "cpu"],
+    default="auto",
     help="Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU",
 )
 parser.add_argument("--output", "-o", type=str, required=True, help="Output directory")
