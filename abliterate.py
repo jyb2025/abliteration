@@ -130,6 +130,7 @@ def compute_refusals(
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
+                pad_token_id=tokenizer.eos_token_id,
             )
         )
     for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
@@ -140,6 +141,7 @@ def compute_refusals(
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
+                pad_token_id=tokenizer.eos_token_id,
             )
         )
 
