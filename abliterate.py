@@ -44,7 +44,7 @@ parser.add_argument(
 parser.add_argument(
     "--layer-fraction",
     type=float,
-    default=0.6,
+    default=1,
     help="Fraction of layers to use for refusal_dir calculation",
 )
 parser.add_argument(
