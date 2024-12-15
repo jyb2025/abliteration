@@ -1,18 +1,18 @@
+import gc
 import json
 import torch
-import einops
 import argparse
-import jaxtyping
-import torch.nn as nn
 from tqdm import tqdm
-from typing import Optional, Tuple
+from typing import Union
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextStreamer,
-    AwqConfig,
     BitsAndBytesConfig,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+    PreTrainedModel,
 )
 
 parser = argparse.ArgumentParser(description="Make abliterated models")
@@ -27,16 +27,39 @@ parser.add_argument(
     "--device",
     "-d",
     type=str,
-    default="auto",
+    default="cuda",
     help="Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU",
 )
-parser.add_argument("--output", "-o", type=str,
-                    required=True, help="Output directory")
+parser.add_argument("--output", "-o", type=str, required=True, help="Output directory")
 parser.add_argument(
-    "--no-chat",
+    "--skip-begin",
+    type=int,
+    default=1,
+    help="Number of layers to skip at the beginning. Defaults to 1 to avoid messing with the first layer",
+)
+parser.add_argument(
+    "--skip-end", type=int, default=0, help="Number of layers to skip at the end"
+)
+parser.add_argument(
+    "--layer-fraction",
+    type=float,
+    default=0.6,
+    help="Fraction of layers to use for refusal_dir calculation",
+)
+parser.add_argument(
+    "--scale-factor",
+    type=float,
+    default=1.0,
+    help="Scale factor for ablation. Use a negative scale-factor to encourage refusal. >=1 makes no sense",
+)
+parser.add_argument(
+    "--flash-attn", action="store_true", default=False, help="Use flash attention 2"
+)
+parser.add_argument(
+    "--chat",
     action="store_true",
     default=False,
-    help="Do not chat with model after abliteration",
+    help="Chat with the model after abliteration",
 )
 parser.add_argument(
     "--deccp",
@@ -57,64 +80,23 @@ quant.add_argument(
     default=False,
     help="Load model in 8-bit precision using bitsandbytes",
 )
-quant.add_argument("--awq", action="store_true",
-                   default=False, help="Load awq model")
 args = parser.parse_args()
 
 
-def direction_ablation_hook(
-    activation: jaxtyping.Float[torch.Tensor, "... d_act"],
-    direction: jaxtyping.Float[torch.Tensor, "d_act"],
-):
-    proj = (
-        einops.einsum(
-            activation, direction.view(-1,
-                                       1), "... d_act, d_act single -> ... single"
-        )
-        * direction
-    )
-    return activation - proj
-
-
-class AblationDecoderLayer(nn.Module):
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        **kwargs,
-    ) -> Tuple[
-        torch.FloatTensor, Optional[Tuple[torch.FloatTensor,
-                                          torch.FloatTensor]]
-    ]:
-        assert not output_attentions
-
-        ablated = direction_ablation_hook(
-            hidden_states, refusal_dir.to(hidden_states.device)
-        ).to(hidden_states.device)
-
-        outputs = (ablated,)
-
-        if use_cache:
-            outputs += (past_key_value,)
-
-        # noinspection PyTypeChecker
-        return outputs
-
-
-def compute_refusals(model, tokenizer):
-    with open("./harmful.json", "r", encoding="utf-8") as f:
-        harmful_list = json.load(f)
+def compute_refusals(
+    model: PreTrainedModel,
+    tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+    layer_fraction: float = 0.6,
+) -> torch.Tensor:
     with open("./harmless.json", "r", encoding="utf-8") as f:
         harmless_list = json.load(f)
 
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
-        harmful_list += deccp_list["text"]
+        harmful_list = deccp_list["text"]
+    else:
+        with open("./harmful.json", "r", encoding="utf-8") as f:
+            harmful_list = json.load(f)
 
     harmful_tokens = [
         tokenizer.apply_chat_template(
@@ -133,10 +115,13 @@ def compute_refusals(model, tokenizer):
         for insn in harmless_list
     ]
 
+    torch.cuda.empty_cache()
+    gc.collect()
+
     harmful_outputs = []
     harmless_outputs = []
 
-    for token in tqdm(harmful_tokens):
+    for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
         harmful_outputs.append(
             model.generate(
                 token.to(model.device),
@@ -146,7 +131,7 @@ def compute_refusals(model, tokenizer):
                 output_hidden_states=True,
             )
         )
-    for token in tqdm(harmless_tokens):
+    for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
         harmless_outputs.append(
             model.generate(
                 token.to(model.device),
@@ -157,7 +142,10 @@ def compute_refusals(model, tokenizer):
             )
         )
 
-    layer_idx = int(len(model.model.layers) * 0.6)
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    layer_idx = int(len(model.model.layers) * layer_fraction)
     pos = -1
     harmful_hidden = [
         output.hidden_states[0][layer_idx][:, pos, :] for output in harmful_outputs
@@ -168,20 +156,74 @@ def compute_refusals(model, tokenizer):
 
     harmful_mean = torch.stack(harmful_hidden).mean(dim=0)
     harmless_mean = torch.stack(harmless_hidden).mean(dim=0)
-    global refusal_dir
     refusal_dir = harmful_mean - harmless_mean
     refusal_dir = refusal_dir / refusal_dir.norm()
     return refusal_dir
 
 
-def apply_abliteration(model):
-    for idx in reversed(range(len(model.model.layers))):
-        model.model.layers.insert(idx, AblationDecoderLayer())
+def modify_tensor(
+    tensor_data: torch.Tensor, refusal_dir: torch.Tensor, scale_factor: float = 1.0
+) -> torch.nn.Parameter:
+    assert scale_factor <= 1.0, "Using a scale_factor of > 1 doesn't make sense..."
+    if tensor_data.device != refusal_dir.device:
+        refusal_dir = refusal_dir.to(tensor_data.device)
+    tensor_float32 = tensor_data.to(torch.float32)
+    refusal_dir_float32 = refusal_dir.to(torch.float32)
+    # Ensure refusal_dir is a 1-dimensional tensor
+    if refusal_dir_float32.dim() > 1:
+        refusal_dir_float32 = refusal_dir_float32.view(-1)
+    tensor_float32 -= scale_factor * torch.matmul(
+        torch.outer(refusal_dir_float32, refusal_dir_float32), tensor_float32
+    )
+    tensor_modified = tensor_float32.to(torch.float16)
+
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    return torch.nn.Parameter(tensor_modified)
+
+
+def apply_abliteration(
+    model: PreTrainedModel,
+    refusal_dir: torch.Tensor,
+    skip_begin_layers: int = 1,
+    skip_end_layers: int = 0,
+    scale_factor: float = 1.0,
+) -> PreTrainedModel:
+    lm_model = model.model
+    assert hasattr(
+        lm_model, "layers"
+    ), "The model does not have the expected structure."
+    num_layers = len(lm_model.layers)
+    for layer_idx in tqdm(
+        range(skip_begin_layers, num_layers - skip_end_layers),
+        desc="Applying abliteration",
+    ):
+        lm_model.layers[layer_idx].self_attn.o_proj.weight = modify_tensor(
+            lm_model.layers[layer_idx].self_attn.o_proj.weight.data,
+            refusal_dir,
+            scale_factor,
+        )
+        lm_model.layers[layer_idx].mlp.down_proj.weight = modify_tensor(
+            lm_model.layers[layer_idx].mlp.down_proj.weight.data,
+            refusal_dir,
+            scale_factor,
+        )
+
+    torch.cuda.empty_cache()
+    gc.collect()
+
     return model
 
 
 if __name__ == "__main__":
+    assert args.scale_factor <= 1.0, "Using a scale_factor of > 1 doesn't make sense..."
+    assert args.skip_begin >= 1, "Do not mess with the first layer!"
+    assert (
+        args.layer_fraction >= 0.0 and args.layer_fraction <= 1.0
+    ), "Invalid layer fraction"
     torch.inference_mode()
+    torch.set_grad_enabled(False)
     if args.load_in_4bit:
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -194,8 +236,6 @@ if __name__ == "__main__":
             llm_int8_enable_fp32_cpu_offload=True,
             llm_int8_has_fp16_weight=True,
         )
-    elif args.awq:
-        quant_config = AwqConfig()
     else:
         quant_config = None
 
@@ -206,20 +246,26 @@ if __name__ == "__main__":
         low_cpu_mem_usage=True,
         device_map=args.device,
         quantization_config=quant_config,
+        attn_implementation="flash_attention_2" if args.flash_attn else None,
     )
+    assert args.skip_begin + args.skip_end < len(
+        model.model.layers
+    ), "Too many layers to skip"
     tokenizer = AutoTokenizer.from_pretrained(
         args.model, trust_remote_code=True, device_map=args.device
     )
 
     print("Computing refusal dir...")
-    compute_refusals(model, tokenizer)
+    refusal_dir = compute_refusals(model, tokenizer, args.layer_fraction)
     print("Applying refusal dir...")
-    model = apply_abliteration(model)
+    model = apply_abliteration(
+        model, refusal_dir, args.skip_begin, args.skip_end, args.scale_factor
+    )
     print(f"Saving abliterated model to {args.output}...")
     model.save_pretrained(args.output)
     tokenizer.save_pretrained(args.output)
 
-    if args.no_chat:
+    if not args.chat:
         exit(0)
 
     conversation = []
@@ -241,10 +287,10 @@ if __name__ == "__main__":
         )
 
         gen = model.generate(
-            toks.to(model.device), streamer=streamer, max_new_tokens=1337
+            toks.to(model.device), streamer=streamer, max_new_tokens=256
         )
 
         decoded = tokenizer.batch_decode(
-            gen[0][len(toks[0]):], skip_special_tokens=True
+            gen[0][len(toks[0]) :], skip_special_tokens=True
         )
         conversation.append({"role": "assistant", "content": "".join(decoded)})
