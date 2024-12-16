@@ -118,7 +118,7 @@ def compute_refusals(
     for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
         harmful_outputs.append(
             model.generate(
-                token.to(model.device),
+                token.to("cpu"),
                 use_cache=False,
                 max_new_tokens=1,
                 return_dict_in_generate=True,
@@ -129,7 +129,7 @@ def compute_refusals(
     for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
         harmless_outputs.append(
             model.generate(
-                token.to(model.device),
+                token.to("cpu"),
                 use_cache=False,
                 max_new_tokens=1,
                 return_dict_in_generate=True,
