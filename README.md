@@ -51,7 +51,9 @@ lm_model.layers[layer_idx].mlp.down_proj.weight = modify_tensor(
 )
 ```
 
-Available targets can be found in [transformers model architectures](https://github.com/huggingface/transformers/tree/main/src/transformers/models) and [mergekit model architectures](https://github.com/arcee-ai/mergekit/tree/main/mergekit/_data/architectures)
+> Qwen series models are so stubborn that you might need to adjust parameters to make a good abliteration.
+
+Available targets can be found in [transformers model architectures](https://github.com/huggingface/transformers/tree/main/src/transformers/models) and [mergekit model architectures](https://github.com/arcee-ai/mergekit/tree/main/mergekit/_data/architectures).
 
 **Full arguments**:
 
