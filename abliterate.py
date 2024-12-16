@@ -268,7 +268,7 @@ if __name__ == "__main__":
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
             trust_remote_code=True,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
             device_map="cpu",
         )
