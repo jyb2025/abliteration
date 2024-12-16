@@ -1,6 +1,6 @@
 import gc
-import json
 import torch
+import pandas
 import argparse
 from tqdm import tqdm
 from typing import Union
@@ -8,7 +8,6 @@ from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
-    TextStreamer,
     BitsAndBytesConfig,
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
@@ -83,15 +82,15 @@ def compute_refusals(
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
     layer_fraction: float = 0.6,
 ) -> torch.Tensor:
-    with open("./harmless.json", "r", encoding="utf-8") as f:
-        harmless_list = json.load(f)
-
+    df = pandas.read_parquet("./harmless.parquet")
+    harmless_list = df["text"].tolist()
+    
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
         harmful_list = deccp_list["text"]
     else:
-        with open("./harmful.json", "r", encoding="utf-8") as f:
-            harmful_list = json.load(f)
+        df = pandas.read_parquet("./harmful.parquet")
+        harmful_list = df["text"].tolist()
 
     harmful_tokens = [
         tokenizer.apply_chat_template(
