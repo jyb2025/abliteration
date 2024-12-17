@@ -119,7 +119,6 @@ def compute_refusals(
         harmful_outputs.append(
             model.generate(
                 token.to("cpu"),
-                use_cache=False,
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
@@ -130,7 +129,6 @@ def compute_refusals(
         harmless_outputs.append(
             model.generate(
                 token.to("cpu"),
-                use_cache=False,
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
