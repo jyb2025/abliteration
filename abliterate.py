@@ -34,7 +34,7 @@ parser.add_argument(
     "--precision",
     "-p",
     type=str,
-    choices=["fp16, bf16, fp32"],
+    choices=["fp16", "bf16", "fp32"],
     default="bf16",
     help="Precision to use for ablation, default is bf16",
 )
