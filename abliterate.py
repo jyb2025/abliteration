@@ -50,7 +50,7 @@ parser.add_argument(
     "--scale-factor",
     type=float,
     default=1.0,
-    help="Scale factor for ablation. Use a negative scale-factor to encourage refusal. >=1 makes no sense",
+    help="Scale factor for ablation. Use a negative scale-factor to encourage refusal. If abliteration is not good, try to increase it a little bit",
 )
 parser.add_argument(
     "--flash-attn", action="store_true", default=False, help="Use flash attention 2"
@@ -159,7 +159,6 @@ def compute_refusals(
 def modify_tensor(
     tensor_data: torch.Tensor, refusal_dir: torch.Tensor, scale_factor: float = 1.0
 ) -> torch.nn.Parameter:
-    assert scale_factor <= 1.0, "Using a scale_factor of > 1 doesn't make sense..."
     if tensor_data.device != refusal_dir.device:
         refusal_dir = refusal_dir.to(tensor_data.device)
     tensor_float32 = tensor_data.to(torch.float32)
@@ -212,7 +211,6 @@ def apply_abliteration(
 
 
 if __name__ == "__main__":
-    assert args.scale_factor <= 1.0, "Using a scale_factor of > 1 doesn't make sense..."
     assert args.skip_begin >= 1, "Do not mess with the first layer!"
     assert (
         args.layer_fraction >= 0.0 and args.layer_fraction <= 1.0
