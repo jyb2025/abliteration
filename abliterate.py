@@ -30,6 +30,14 @@ parser.add_argument(
     default="auto",
     help="Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU",
 )
+parser.add_argument(
+    "--precision",
+    "-p",
+    type=str,
+    choices=["fp16, bf16, fp32"],
+    default="bf16",
+    help="Precision to use for ablation, default is bf16",
+)
 parser.add_argument("--output", "-o", type=str, required=True, help="Output directory")
 parser.add_argument(
     "--skip-begin",
@@ -84,7 +92,7 @@ def compute_refusals(
 ) -> torch.Tensor:
     df = pandas.read_parquet("./harmless.parquet")
     harmless_list = df["text"].tolist()
-    
+
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
         harmful_list = deccp_list["text"]
@@ -219,10 +227,17 @@ if __name__ == "__main__":
     ), "Invalid layer fraction"
     torch.inference_mode()
     torch.set_grad_enabled(False)
+
+    if args.precision == "fp16":
+        precision = torch.float16
+    elif args.precision == "bf16":
+        precision = torch.bfloat16
+    else:
+        precision = torch.float32
     if args.load_in_4bit:
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=precision,
             bnb_4bit_use_double_quant=True,
         )
     elif args.load_in_8bit:
@@ -237,14 +252,14 @@ if __name__ == "__main__":
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         trust_remote_code=True,
-        torch_dtype=torch.float16,
+        torch_dtype=precision,
         low_cpu_mem_usage=True,
         device_map=args.device,
         quantization_config=quant_config,
         attn_implementation="flash_attention_2" if args.flash_attn else None,
     )
     model.requires_grad_(False)
-    
+
     assert args.skip_begin + args.skip_end < len(
         model.model.layers
     ), "Too many layers to skip"
@@ -256,9 +271,9 @@ if __name__ == "__main__":
     refusal_dir = compute_refusals(model, tokenizer, args.layer_fraction)
     print("Applying refusal dir...")
 
-    if args.device != "cpu":
+    if args.precision != "bf16":
         # WARNING: Reloading model to CPU to apply abliteration is necessary, for cuda device will add slight error to other modules such as q,k,v proj or mlp, and ends up messing up the model.
-        print("Reloading model to CPU...")
+        print("Reloading model to CPU with bf16 precision...")
         del model
         torch.cuda.empty_cache()
         gc.collect()
