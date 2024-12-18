@@ -271,7 +271,7 @@ if __name__ == "__main__":
     refusal_dir = compute_refusals(model, tokenizer, args.layer_fraction)
     print("Applying refusal dir...")
 
-    if args.precision != "bf16":
+    if args.precision != "bf16" or args.load_in_4bit or args.load_in_8bit:
         # WARNING: Reloading model to CPU to apply abliteration is necessary, for cuda device will add slight error to other modules such as q,k,v proj or mlp, and ends up messing up the model.
         print("Reloading model to CPU with bf16 precision...")
         del model
