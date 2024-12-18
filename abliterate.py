@@ -92,13 +92,11 @@ def compute_refusals(
 ) -> torch.Tensor:
     df = pandas.read_parquet("./harmless.parquet")
     harmless_list = df["text"].tolist()
-
+    df = pandas.read_parquet("./harmful.parquet")
+    harmful_list = df["text"].tolist()
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
-        harmful_list = deccp_list["text"]
-    else:
-        df = pandas.read_parquet("./harmful.parquet")
-        harmful_list = df["text"].tolist()
+        harmful_list += deccp_list["text"]
 
     harmful_tokens = [
         tokenizer.apply_chat_template(
