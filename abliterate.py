@@ -122,6 +122,7 @@ def compute_refusals(
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
+                use_cache=False,
                 pad_token_id=tokenizer.eos_token_id,
             )
         )
@@ -132,6 +133,7 @@ def compute_refusals(
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
+                use_cache=False,
                 pad_token_id=tokenizer.eos_token_id,
             )
         )
