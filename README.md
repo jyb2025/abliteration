@@ -27,16 +27,7 @@ pip install -r requirements.txt
 python abliteration.py -m <path_to_your_model> -o <output_dir>
 ```
 
-Now your model will be abliterated and saved to `<output_dir>`. Once it finishes, you can immediately chat with your abliterated model in the terminal.
-
-`--deccp` note:
-
-This option is for Chinese models, to abliterate it from specific topics. To use this option, you should:
-
-1. abliterate the model without `--deccp` option first, to get a normal abliterated model.
-2. use the `--deccp` option to abliterate the model generated in step 1 from specific topics.
-
-If you find that the abliteration process does not work well, you can try to modify `--layer-fraction` parameter, or try to adjust different `proj` in `abliteratie.py` -> `apply_abliteration()`:
+Now your model will be abliterated and saved to `<output_dir>`. Once it finishes, you can immediately chat with your abliterated model in the terminal. For Chinese models, you can use `--deccp` to abliterate it from certain topics.
 
 ```python
 lm_model.layers[layer_idx].self_attn.o_proj.weight = modify_tensor(
