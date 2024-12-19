@@ -2,9 +2,9 @@
 
 Make abliterated models using transformers, easy and fast.
 
-The code has been tested on Llama-3.2, Qwen2.5-Coder, Ministral-8b. Note: applying abliteration needs to load the model into memory and compute by CPU. Please make sure you have sufficient memory capacity.
+The code has been tested on Llama-3.2, Qwen2.5-Coder, Ministral-8b.
 
-> The reason why I use CPU to apply abliteration is that cuda device will add slight error (for example, xxxE-12) to the model projects, and ends up messing up the whole model, which cost me a lot of time to debug. 💢
+Note: abliteration is not uncensorship. Though abliterated, it doesn't necessarily mean the model is completely uncensored, it simply will not explicitly refuse you.
 
 ## Usage
 
