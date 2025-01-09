@@ -68,7 +68,7 @@ options:
   --layer-fraction LAYER_FRACTION
                         Fraction of layers to use for refusal_dir calculation
   --scale-factor SCALE_FACTOR
-                        Scale factor for ablation. Use a negative scale-factor to encourage refusal. >=1 makes no sense
+                        Scale factor for ablation. Use a negative scale-factor to encourage refusal
   --flash-attn          Use flash attention 2
   --deccp               For Chinese models, in specific topics
   --load-in-4bit        Load model in 4-bit precision using bitsandbytes
