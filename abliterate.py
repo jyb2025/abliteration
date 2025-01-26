@@ -124,6 +124,7 @@ def compute_refusals(
     for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
         harmful_outputs.append(
             model.generate(
+                token.to(model.device),
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
@@ -134,6 +135,7 @@ def compute_refusals(
     for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
         harmless_outputs.append(
             model.generate(
+                token..to(model.device),
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
