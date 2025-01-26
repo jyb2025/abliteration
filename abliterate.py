@@ -124,7 +124,6 @@ def compute_refusals(
     for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
         harmful_outputs.append(
             model.generate(
-                token.to("cpu"),
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
@@ -135,7 +134,6 @@ def compute_refusals(
     for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
         harmless_outputs.append(
             model.generate(
-                token.to("cpu"),
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_hidden_states=True,
@@ -269,9 +267,8 @@ if __name__ == "__main__":
     refusal_dir = compute_refusals(model, tokenizer, args.layer_fraction)
     print("Applying refusal dir...")
 
-    if args.precision != "bf16" or args.load_in_4bit or args.load_in_8bit:
-        # WARNING: Reloading model to CPU to apply abliteration is necessary, for cuda device will add slight error to other modules such as q,k,v proj or mlp, and ends up messing up the model.
-        print("Reloading model to CPU with bf16 precision...")
+    if args.load_in_4bit or args.load_in_8bit:
+        print("Reloading model with bf16 precision...")
         del model
         torch.cuda.empty_cache()
         gc.collect()
@@ -280,7 +277,7 @@ if __name__ == "__main__":
             trust_remote_code=True,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            device_map="cpu",
+            device_map=args.device,
         )
 
     model = apply_abliteration(
