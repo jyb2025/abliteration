@@ -1,5 +1,6 @@
 import gc
 import torch
+import random
 import pandas
 import argparse
 from tqdm import tqdm
@@ -69,6 +70,9 @@ parser.add_argument(
     default=False,
     help="For Chinese models, in specific topics",
 )
+parser.add_argument(
+    "--num-calibs", "-n", type=int, default=-1, help="Number of calibrations"
+)
 quant = parser.add_mutually_exclusive_group()
 quant.add_argument(
     "--load-in-4bit",
@@ -97,6 +101,10 @@ def compute_refusals(
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
         harmful_list += deccp_list["text"]
+
+    if args.num_calibs > 0:
+        harmful_list = random.sample(harmful_list, args.num_calibs)
+        harmless_list = random.sample(harmless_list, args.num_calibs)
 
     harmful_tokens = [
         tokenizer.apply_chat_template(
@@ -279,7 +287,7 @@ if __name__ == "__main__":
             trust_remote_code=True,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            device_map=args.device,
+            device_map="cpu",
         )
 
     model = apply_abliteration(
