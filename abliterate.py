@@ -43,9 +43,9 @@ if __name__ == "__main__":
     else:
         quant_config = None
 
-    df = pandas.read_parquet("./harmless.parquet")
+    df = pandas.read_parquet("./data/harmless.parquet")
     harmless_list = df["text"].tolist()
-    df = pandas.read_parquet("./harmful.parquet")
+    df = pandas.read_parquet("./data/harmful.parquet")
     harmful_list = df["text"].tolist()
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
