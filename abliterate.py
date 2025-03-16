@@ -2,254 +2,19 @@ import gc
 import torch
 import random
 import pandas
-import argparse
-from tqdm import tqdm
-from typing import Union
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     BitsAndBytesConfig,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
-    PreTrainedModel,
 )
-
-parser = argparse.ArgumentParser(description="Make abliterated models")
-parser.add_argument(
-    "--model",
-    "-m",
-    type=str,
-    required=True,
-    help="Your model directory or huggingface model ID",
-)
-parser.add_argument(
-    "--device",
-    "-d",
-    type=str,
-    choices=["auto", "cuda", "cpu"],
-    default="auto",
-    help="Target device to process abliteration. Warning, bitsandbytes quantization DOES NOT support CPU",
-)
-parser.add_argument(
-    "--precision",
-    "-p",
-    type=str,
-    choices=["fp16", "bf16", "fp32"],
-    default="bf16",
-    help="Precision to use for ablation, default is bf16",
-)
-parser.add_argument("--output", "-o", type=str, required=True, help="Output directory")
-parser.add_argument(
-    "--skip-begin",
-    type=int,
-    default=1,
-    help="Number of layers to skip at the beginning. Defaults to 1 to avoid messing with the first layer",
-)
-parser.add_argument(
-    "--skip-end", type=int, default=0, help="Number of layers to skip at the end"
-)
-parser.add_argument(
-    "--layer-fraction",
-    type=float,
-    default=1,
-    help="Fraction of layers to use for refusal_dir calculation",
-)
-parser.add_argument(
-    "--scale-factor",
-    type=float,
-    default=1.0,
-    help="Scale factor for ablation. Use a negative scale-factor to encourage refusal. If abliteration is not good, try to increase it a little bit",
-)
-parser.add_argument(
-    "--flash-attn", action="store_true", default=False, help="Use flash attention 2"
-)
-parser.add_argument(
-    "--deccp",
-    action="store_true",
-    default=False,
-    help="For Chinese models, in specific topics",
-)
-parser.add_argument(
-    "--num-calibs", "-n", type=int, default=-1, help="Number of calibrations"
-)
-quant = parser.add_mutually_exclusive_group()
-quant.add_argument(
-    "--load-in-4bit",
-    action="store_true",
-    default=False,
-    help="Load model in 4-bit precision using bitsandbytes",
-)
-quant.add_argument(
-    "--load-in-8bit",
-    action="store_true",
-    default=False,
-    help="Load model in 8-bit precision using bitsandbytes",
-)
-args = parser.parse_args()
-
-
-def extract_hidden_states(raw_output) -> dict:
-    processed = {}
-
-    assert hasattr(raw_output, "hidden_states")
-    cpu_hidden = []
-    for layer_output in raw_output.hidden_states:
-        layer_tensors = []
-        for tensor in layer_output:
-            assert isinstance(tensor, torch.Tensor)
-            layer_tensors.append(tensor.to("cpu"))
-        cpu_hidden.append(layer_tensors)
-    processed["hidden_states"] = cpu_hidden
-
-    return processed
-
-
-def compute_refusals(
-    model: PreTrainedModel,
-    tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
-    layer_fraction: float = 0.6,
-) -> torch.Tensor:
-    df = pandas.read_parquet("./harmless.parquet")
-    harmless_list = df["text"].tolist()
-    df = pandas.read_parquet("./harmful.parquet")
-    harmful_list = df["text"].tolist()
-    if args.deccp:
-        deccp_list = load_dataset("augmxnt/deccp", split="censored")
-        harmful_list += deccp_list["text"]
-
-    if args.num_calibs > 0:
-        harmful_list = random.sample(harmful_list, args.num_calibs)
-        harmless_list = random.sample(harmless_list, args.num_calibs)
-
-    harmful_tokens = [
-        tokenizer.apply_chat_template(
-            conversation=[{"role": "user", "content": inst}],
-            add_generation_prompt=True,
-            return_tensors="pt",
-        )
-        for inst in harmful_list
-    ]
-    harmless_tokens = [
-        tokenizer.apply_chat_template(
-            conversation=[{"role": "user", "content": insn}],
-            add_generation_prompt=True,
-            return_tensors="pt",
-        )
-        for insn in harmless_list
-    ]
-
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    harmful_outputs = []
-    harmless_outputs = []
-
-    for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
-        raw_output = model.generate(
-            token.to(model.device),
-            max_new_tokens=1,
-            return_dict_in_generate=True,
-            output_hidden_states=True,
-            use_cache=False,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-        cpu_output = extract_hidden_states(raw_output)
-        harmful_outputs.append(cpu_output)
-        del raw_output
-        torch.cuda.empty_cache()
-        gc.collect()
-
-    for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
-        raw_output = model.generate(
-            token.to(model.device),
-            max_new_tokens=1,
-            return_dict_in_generate=True,
-            output_hidden_states=True,
-            use_cache=False,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-        cpu_output = extract_hidden_states(raw_output)
-        harmless_outputs.append(cpu_output)
-        del raw_output
-        torch.cuda.empty_cache()
-        gc.collect()
-
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    layer_idx = int(len(model.model.layers) * layer_fraction)
-    pos = -1
-    harmful_hidden = [
-        output["hidden_states"][0][layer_idx][:, pos, :] for output in harmful_outputs
-    ]
-    harmless_hidden = [
-        output["hidden_states"][0][layer_idx][:, pos, :] for output in harmless_outputs
-    ]
-
-    harmful_mean = torch.stack(harmful_hidden).mean(dim=0)
-    harmless_mean = torch.stack(harmless_hidden).mean(dim=0)
-    refusal_dir = harmful_mean - harmless_mean
-    refusal_dir = refusal_dir / refusal_dir.norm()
-    print(refusal_dir)
-    return refusal_dir
-
-
-def modify_tensor(
-    tensor_data: torch.Tensor, refusal_dir: torch.Tensor, scale_factor: float = 1.0
-) -> torch.nn.Parameter:
-    if tensor_data.device != refusal_dir.device:
-        refusal_dir = refusal_dir.to(tensor_data.device)
-    tensor_float32 = tensor_data.to(torch.float32)
-    refusal_dir_float32 = refusal_dir.to(torch.float32)
-    # Ensure refusal_dir is a 1-dimensional tensor
-    if refusal_dir_float32.dim() > 1:
-        refusal_dir_float32 = refusal_dir_float32.view(-1)
-    tensor_float32 -= scale_factor * torch.matmul(
-        torch.outer(refusal_dir_float32, refusal_dir_float32), tensor_float32
-    )
-    tensor_modified = tensor_float32.to(torch.bfloat16)
-
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    return torch.nn.Parameter(tensor_modified)
-
-
-def apply_abliteration(
-    model: PreTrainedModel,
-    refusal_dir: torch.Tensor,
-    skip_begin_layers: int = 1,
-    skip_end_layers: int = 0,
-    scale_factor: float = 1.0,
-) -> PreTrainedModel:
-    lm_model = model.model
-    assert hasattr(
-        lm_model, "layers"
-    ), "The model does not have the expected structure."
-    num_layers = len(lm_model.layers)
-    for layer_idx in tqdm(
-        range(skip_begin_layers, num_layers - skip_end_layers),
-        desc="Applying abliteration",
-    ):
-        lm_model.layers[layer_idx].self_attn.o_proj.weight = modify_tensor(
-            lm_model.layers[layer_idx].self_attn.o_proj.weight.data,
-            refusal_dir,
-            scale_factor,
-        )
-        lm_model.layers[layer_idx].mlp.down_proj.weight = modify_tensor(
-            lm_model.layers[layer_idx].mlp.down_proj.weight.data,
-            refusal_dir,
-            scale_factor,
-        )
-
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    return model
+from utils.arguments import parser
+from utils.compute import compute_refusals
+from utils.apply import apply_abliteration
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
     assert args.skip_begin >= 1, "Do not mess with the first layer!"
     assert (
         args.layer_fraction >= 0.0 and args.layer_fraction <= 1.0
@@ -278,6 +43,18 @@ if __name__ == "__main__":
     else:
         quant_config = None
 
+    df = pandas.read_parquet("./harmless.parquet")
+    harmless_list = df["text"].tolist()
+    df = pandas.read_parquet("./harmful.parquet")
+    harmful_list = df["text"].tolist()
+    if args.deccp:
+        deccp_list = load_dataset("augmxnt/deccp", split="censored")
+        harmful_list += deccp_list["text"]
+
+    if args.num_calibs > 0:
+        harmful_list = random.sample(harmful_list, args.num_calibs)
+        harmless_list = random.sample(harmless_list, args.num_calibs)
+
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
         trust_remote_code=True,
@@ -297,7 +74,9 @@ if __name__ == "__main__":
     )
 
     print("Computing refusal dir...")
-    refusal_dir = compute_refusals(model, tokenizer, args.layer_fraction)
+    refusal_dir = compute_refusals(
+        model, tokenizer, harmful_list, harmless_list, args.layer_fraction
+    )
     print("Applying refusal dir...")
 
     if args.load_in_4bit or args.load_in_8bit:
