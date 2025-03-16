@@ -73,11 +73,18 @@ if __name__ == "__main__":
         args.model, trust_remote_code=True, device_map=args.device
     )
 
-    print("Computing refusal dir...")
-    refusal_dir = compute_refusals(
-        model, tokenizer, harmful_list, harmless_list, args.layer_fraction
-    )
-    print("Applying refusal dir...")
+    if args.input_refusal is not None:
+        print(f"Loading refusal tensor from {args.input_refusal}...")
+        refusal_dir = torch.load(args.input_refusal)
+    else:
+        print("Computing refusal tensor...")
+        refusal_dir = compute_refusals(
+            model, tokenizer, harmful_list, harmless_list, args.layer_fraction
+        )
+    if args.output_refusal is not None:
+        print(f"Saving refusal tensor to {args.output_refusal}...")
+        torch.save(refusal_dir, args.output_refusal)
+    print("Applying refusal tensor...")
 
     if args.load_in_4bit or args.load_in_8bit:
         print("Reloading model with bf16 precision...")

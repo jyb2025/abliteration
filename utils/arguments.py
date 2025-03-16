@@ -58,6 +58,15 @@ parser.add_argument(
 parser.add_argument(
     "--num-calibs", "-n", type=int, default=-1, help="Number of calibrations"
 )
+
+refusals = parser.add_mutually_exclusive_group()
+refusals.add_argument(
+    "--input-refusal", "-ir", type=str, default=None, help="Input tensor for refusal"
+)
+refusals.add_argument(
+    "--output-refusal", "-or", type=str, default=None, help="Output tensor for refusal"
+)
+
 quant = parser.add_mutually_exclusive_group()
 quant.add_argument(
     "--load-in-4bit",
