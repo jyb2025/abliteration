@@ -32,6 +32,39 @@ def compute_refusals(
     harmless_list: list[str],
     layer_fraction: float = 0.6,
 ) -> torch.Tensor:
+
+    def welford(tokens: list, desc: str) -> torch.Tensor:
+        mean = None
+        count = 0
+        for token in tqdm(tokens, desc=desc):
+            raw_output = model.generate(
+                token.to(model.device),
+                max_new_tokens=1,
+                return_dict_in_generate=True,
+                output_hidden_states=True,
+                # use_cache=False,
+                pad_token_id=tokenizer.eos_token_id,
+            )
+            cpu_output = extract_hidden_states(raw_output)
+            current_hidden = cpu_output["hidden_states"][0][layer_idx][:, pos, :]
+            assert isinstance(current_hidden, torch.Tensor)
+            current_hidden.detach()
+            
+            batch_size = current_hidden.size(dim=0)
+            total_count = count + batch_size
+            
+            if mean is None:
+                mean = current_hidden.mean(dim=0)
+            else:
+                delta = current_hidden - mean.squeeze(0)
+                mean = mean + (delta.sum(dim=0)) / total_count
+            count = total_count
+            
+            del raw_output, cpu_output, current_hidden
+            torch.cuda.empty_cache()
+        assert mean is not None
+        return mean
+
     harmful_tokens = [
         tokenizer.apply_chat_template(
             conversation=[{"role": "user", "content": inst}],
@@ -55,59 +88,9 @@ def compute_refusals(
     layer_idx = int(len(model.model.layers) * layer_fraction)
     pos = -1
 
-    harmful_sum = None
-    harmful_count = 0
-    for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
-        raw_output = model.generate(
-            token.to(model.device),
-            max_new_tokens=1,
-            return_dict_in_generate=True,
-            output_hidden_states=True,
-            # use_cache=False,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-        cpu_output = extract_hidden_states(raw_output)
-        current_hidden = cpu_output["hidden_states"][0][layer_idx][:, pos, :]
-        assert isinstance(current_hidden, torch.Tensor)
-        if harmful_sum is None:
-            harmful_sum = current_hidden.sum(dim=0)
-        else:
-            harmful_sum += current_hidden.sum(dim=0)
-        harmful_count += current_hidden.size(dim=0)
-        del raw_output, cpu_output, current_hidden
-        torch.cuda.empty_cache()
-
+    harmful_mean = welford(harmful_tokens, "Generating harmful outputs")
     gc.collect()
-
-    harmless_sum = None
-    harmless_count = 0
-    for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
-        raw_output = model.generate(
-            token.to(model.device),
-            max_new_tokens=1,
-            return_dict_in_generate=True,
-            output_hidden_states=True,
-            # use_cache=False,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-        cpu_output = extract_hidden_states(raw_output)
-        current_hidden = cpu_output["hidden_states"][0][layer_idx][:, pos, :]
-        assert isinstance(current_hidden, torch.Tensor)
-        if harmless_sum is None:
-            harmless_sum = current_hidden.sum(dim=0)
-        else:
-            harmless_sum += current_hidden.sum(dim=0)
-        harmless_count += current_hidden.size(dim=0)
-        del raw_output, cpu_output, current_hidden
-        torch.cuda.empty_cache()
-
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    assert harmful_sum is not None
-    assert harmless_sum is not None
-    harmful_mean = harmful_sum / harmful_count
-    harmless_mean = harmless_sum / harmless_count
+    harmless_mean = welford(harmless_tokens, "Generating harmless outputs")
     refusal_dir = harmful_mean - harmless_mean
     refusal_dir = refusal_dir / refusal_dir.norm()
     print(refusal_dir)
