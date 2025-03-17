@@ -8,6 +8,7 @@ from transformers import (
     AutoModelForCausalLM,
     BitsAndBytesConfig,
 )
+from utils.data import load_data
 from utils.arguments import parser
 from utils.compute import compute_refusals
 from utils.apply import apply_abliteration
@@ -43,10 +44,14 @@ if __name__ == "__main__":
     else:
         quant_config = None
 
-    df = pandas.read_parquet("./data/harmless.parquet")
-    harmless_list = df["text"].tolist()
-    df = pandas.read_parquet("./data/harmful.parquet")
-    harmful_list = df["text"].tolist()
+    if args.data_harmful is not None:
+        harmful_list = load_data(args.data_harmful)
+    else:
+        harmful_list = load_data("./data/harmful.parquet")
+    if args.data_harmless is not None:
+        harmless_list = load_data(args.data_harmless)
+    else:
+        harmless_list = load_data("./data/harmless.parquet")
     if args.deccp:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
         harmful_list += deccp_list["text"]

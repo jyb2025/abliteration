@@ -50,6 +50,12 @@ parser.add_argument(
     "--flash-attn", action="store_true", default=False, help="Use flash attention 2"
 )
 parser.add_argument(
+    "--data-harmful", "-dhf", type=str, default=None, help="Harmful prompts file"
+)
+parser.add_argument(
+    "--data-harmless", "-dhl", type=str, default=None, help="Harmless prompts file"
+)
+parser.add_argument(
     "--deccp",
     action="store_true",
     default=False,
