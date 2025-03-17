@@ -76,7 +76,8 @@ def compute_refusals(
         harmful_count += current_hidden.size(dim=0)
         del raw_output, cpu_output, current_hidden
         torch.cuda.empty_cache()
-        gc.collect()
+
+    gc.collect()
 
     harmless_sum = None
     harmless_count = 0
@@ -99,7 +100,6 @@ def compute_refusals(
         harmless_count += current_hidden.size(dim=0)
         del raw_output, cpu_output, current_hidden
         torch.cuda.empty_cache()
-        gc.collect()
 
     torch.cuda.empty_cache()
     gc.collect()
