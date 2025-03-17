@@ -56,9 +56,10 @@ if __name__ == "__main__":
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
         harmful_list += deccp_list["text"]
 
-    if args.num_calibs > 0:
-        harmful_list = random.sample(harmful_list, args.num_calibs)
-        harmless_list = random.sample(harmless_list, args.num_calibs)
+    if args.num_harmful > 0:
+        harmful_list = random.sample(harmful_list, args.num_harmful)
+    if args.num_harmless > 0:
+        harmless_list = random.sample(harmless_list, args.num_harmless)
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model,

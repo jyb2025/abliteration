@@ -62,7 +62,14 @@ parser.add_argument(
     help="For Chinese models, in specific topics",
 )
 parser.add_argument(
-    "--num-calibs", "-n", type=int, default=-1, help="Number of calibrations"
+    "--num-harmful", "-nhf", type=int, default=-1, help="Number of harmful calibrations"
+)
+parser.add_argument(
+    "--num-harmless",
+    "-nhl",
+    type=int,
+    default=-1,
+    help="Number of harmless calibrations",
 )
 
 refusals = parser.add_mutually_exclusive_group()
