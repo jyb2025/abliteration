@@ -63,7 +63,7 @@ def compute_refusals(
             max_new_tokens=1,
             return_dict_in_generate=True,
             output_hidden_states=True,
-            use_cache=False,
+            # use_cache=False,
             pad_token_id=tokenizer.eos_token_id,
         )
         cpu_output = extract_hidden_states(raw_output)
@@ -86,7 +86,7 @@ def compute_refusals(
             max_new_tokens=1,
             return_dict_in_generate=True,
             output_hidden_states=True,
-            use_cache=False,
+            # use_cache=False,
             pad_token_id=tokenizer.eos_token_id,
         )
         cpu_output = extract_hidden_states(raw_output)
