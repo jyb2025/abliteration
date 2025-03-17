@@ -52,9 +52,11 @@ def compute_refusals(
     torch.cuda.empty_cache()
     gc.collect()
 
-    harmful_outputs = []
-    harmless_outputs = []
+    layer_idx = int(len(model.model.layers) * layer_fraction)
+    pos = -1
 
+    harmful_sum = None
+    harmful_count = 0
     for token in tqdm(harmful_tokens, desc="Generating harmful outputs"):
         raw_output = model.generate(
             token.to(model.device),
@@ -65,11 +67,19 @@ def compute_refusals(
             pad_token_id=tokenizer.eos_token_id,
         )
         cpu_output = extract_hidden_states(raw_output)
-        harmful_outputs.append(cpu_output)
-        del raw_output
+        current_hidden = cpu_output["hidden_states"][0][layer_idx][:, pos, :]
+        assert isinstance(current_hidden, torch.Tensor)
+        if harmful_sum is None:
+            harmful_sum = current_hidden.sum(dim=0)
+        else:
+            harmful_sum += current_hidden.sum(dim=0)
+        harmful_count += current_hidden.size(dim=0)
+        del raw_output, cpu_output, current_hidden
         torch.cuda.empty_cache()
         gc.collect()
 
+    harmless_sum = None
+    harmless_count = 0
     for token in tqdm(harmless_tokens, desc="Generating harmless outputs"):
         raw_output = model.generate(
             token.to(model.device),
@@ -80,25 +90,24 @@ def compute_refusals(
             pad_token_id=tokenizer.eos_token_id,
         )
         cpu_output = extract_hidden_states(raw_output)
-        harmless_outputs.append(cpu_output)
-        del raw_output
+        current_hidden = cpu_output["hidden_states"][0][layer_idx][:, pos, :]
+        assert isinstance(current_hidden, torch.Tensor)
+        if harmless_sum is None:
+            harmless_sum = current_hidden.sum(dim=0)
+        else:
+            harmless_sum += current_hidden.sum(dim=0)
+        harmless_count += current_hidden.size(dim=0)
+        del raw_output, cpu_output, current_hidden
         torch.cuda.empty_cache()
         gc.collect()
 
     torch.cuda.empty_cache()
     gc.collect()
 
-    layer_idx = int(len(model.model.layers) * layer_fraction)
-    pos = -1
-    harmful_hidden = [
-        output["hidden_states"][0][layer_idx][:, pos, :] for output in harmful_outputs
-    ]
-    harmless_hidden = [
-        output["hidden_states"][0][layer_idx][:, pos, :] for output in harmless_outputs
-    ]
-
-    harmful_mean = torch.stack(harmful_hidden).mean(dim=0)
-    harmless_mean = torch.stack(harmless_hidden).mean(dim=0)
+    assert harmful_sum is not None
+    assert harmless_sum is not None
+    harmful_mean = harmful_sum / harmful_count
+    harmless_mean = harmless_sum / harmless_count
     refusal_dir = harmful_mean - harmless_mean
     refusal_dir = refusal_dir / refusal_dir.norm()
     print(refusal_dir)
