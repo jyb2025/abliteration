@@ -15,31 +15,36 @@ VRAM/RAM requirements: This repository has been making efforts to reduce VRAM us
 
 ## Quick Start
 
-**Clone the repositoty**:
+### Clone the repositoty
 
 ```shell
 git clone https://github.com/Orion-zhen/abliteration.git && cd abliteration
 ```
 
-**Install dependencies**:
+### Install dependencies
 
 ```shell
 pip install -r requirements.txt
 ```
 
-**Make your abliterations**:
+### Make your abliterations
 
 ```shell
 python abliterate.py -m <path_to_your_model> -o <output_dir>
 ```
 
-**Chat with your abliterated model**:
+### Chat with your abliterated model
 
 ```shell
 python chat.py -m <path_to_your_abliterated_model>
 ```
 
-**Examples**:
+### Compare between models
+
+```shell
+python compare.py -a <model_a> -b <model_b>
+
+### Examples
 
 - Abliterate Llama-3.2:
 
@@ -51,6 +56,18 @@ python abliterate.py -m meta-llama/Llama-3.2-3B-Instruct -o llama3.2-3b-ablitera
 
 ```shell
 python abliterate.py -m meta-llama/Llama-3.2-3B-Instruct -o llama3.2-3b-abliterated --load-in-4bit
+```
+
+- Compare your abliterated model with the original model:
+
+```shell
+python compare.py -a meta-llama/Llama-3.2-3B-Instruct -b llama3.2-3b-abliterated
+```
+
+- Compare in 4-bit precision using bitsandbytes:
+
+```shell
+python compare.py -a meta-llama/Llama-3.2-3B-Instruct -b llama3.2-3b-abliterated --load-in-4bit
 ```
 
 > [!NOTE]
