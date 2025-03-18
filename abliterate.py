@@ -1,7 +1,7 @@
 import gc
+import sys
 import torch
 import random
-import pandas
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -9,33 +9,43 @@ from transformers import (
     BitsAndBytesConfig,
 )
 from utils.data import load_data
-from utils.arguments import parser
 from utils.compute import compute_refusals
 from utils.apply import apply_abliteration
+from utils.arguments import parser, generate_config
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    assert args.skip_begin >= 1, "Do not mess with the first layer!"
+    config = generate_config(args)
     assert (
-        args.layer_fraction >= 0.0 and args.layer_fraction <= 1.0
-    ), "Invalid layer fraction"
+        isinstance(config["model"], str)
+        and isinstance(config["skip-begin"], int)
+        and isinstance(config["skip-end"], int)
+        and isinstance(config["scale-factor"], float)
+        and isinstance(config["layer-fraction"], float)
+    )
+    if config["skip-begin"] < 1:
+        raise ValueError("Do not mess with the first layer!")
+    if config["layer-fraction"] < 0.0 or config["layer-fraction"] > 1.0:
+        raise ValueError("Invalid layer fraction")
+
     torch.inference_mode()
     torch.set_grad_enabled(False)
 
-    if args.precision == "fp16":
+    if config["precision"] == "fp16":
         precision = torch.float16
-    elif args.precision == "bf16":
+    elif config["precision"] == "bf16":
         precision = torch.bfloat16
     else:
         precision = torch.float32
-    if args.load_in_4bit:
+
+    if config["load-in-4bit"]:
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=precision,
             bnb_4bit_use_double_quant=True,
         )
-    elif args.load_in_8bit:
+    elif config["load-in-8bit"]:
         quant_config = BitsAndBytesConfig(
             load_in_8bit=True,
             llm_int8_enable_fp32_cpu_offload=True,
@@ -44,61 +54,67 @@ if __name__ == "__main__":
     else:
         quant_config = None
 
-    if args.data_harmful is not None:
-        harmful_list = load_data(args.data_harmful)
+    if isinstance(config["data-harmful"], str):
+        harmful_list = load_data(config["data-harmful"])
     else:
         harmful_list = load_data("./data/harmful.parquet")
-    if args.data_harmless is not None:
-        harmless_list = load_data(args.data_harmless)
+    if isinstance(config["data-harmless"], str):
+        harmless_list = load_data(config["data-harmless"])
     else:
         harmless_list = load_data("./data/harmless.parquet")
-    if args.deccp:
+
+    if config["deccp"]:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
         harmful_list += deccp_list["text"]
 
-    if args.num_harmful > 0:
-        harmful_list = random.sample(harmful_list, args.num_harmful)
-    if args.num_harmless > 0:
-        harmless_list = random.sample(harmless_list, args.num_harmless)
+    if isinstance(config["num-harmful"], int) and config["num-harmful"] > 0:
+        harmful_list = random.sample(harmful_list, config["num-harmful"])
+    if isinstance(config["num-harmless"], int) and config["num-harmless"] > 0:
+        harmless_list = random.sample(harmless_list, config["num-harmless"])
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.model,
+        config["model"],
         trust_remote_code=True,
         torch_dtype=precision,
         low_cpu_mem_usage=True,
-        device_map=args.device,
+        device_map=config["device"],
         quantization_config=quant_config,
-        attn_implementation="flash_attention_2" if args.flash_attn else None,
+        attn_implementation="flash_attention_2" if config["flash-attn"] else None,
     )
     model.requires_grad_(False)
 
-    assert args.skip_begin + args.skip_end < len(
-        model.model.layers
-    ), "Too many layers to skip"
+    if config["skip-begin"] + config["skip-end"] >= len(model.model.layers):
+        raise ValueError("Too many layers to skip.")
+
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model, trust_remote_code=True, device_map=args.device
+        config["model"], trust_remote_code=True, device_map=config["device"]
     )
 
-    if args.input_refusal is not None:
-        print(f"Loading refusal tensor from {args.input_refusal}...")
-        refusal_dir = torch.load(args.input_refusal)
+    if isinstance(config["input-refusal"], str):
+        print(f"Loading refusal tensor from {config["input-refusal"]}...")
+        refusal_dir = torch.load(config["input-refusal"])
     else:
         print("Computing refusal tensor...")
         refusal_dir = compute_refusals(
-            model, tokenizer, harmful_list, harmless_list, args.layer_fraction
+            model, tokenizer, harmful_list, harmless_list, config["layer-fraction"]
         )
-    if args.output_refusal is not None:
-        print(f"Saving refusal tensor to {args.output_refusal}...")
-        torch.save(refusal_dir, args.output_refusal)
+
+    if isinstance(config["output-refusal"], str):
+        print(f"Saving refusal tensor to {config["output-refusal"]}...")
+        torch.save(refusal_dir, config["output-refusal"])
+
+    if not isinstance(config["output"], str):
+        sys.exit(0)
+
     print("Applying refusal tensor...")
 
-    if args.load_in_4bit or args.load_in_8bit:
+    if config["load-in-4bit"] or config["load-in-8bit"]:
         print("Reloading model with bf16 precision...")
         del model
         torch.cuda.empty_cache()
         gc.collect()
         model = AutoModelForCausalLM.from_pretrained(
-            args.model,
+            config["model"],
             trust_remote_code=True,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
@@ -106,8 +122,12 @@ if __name__ == "__main__":
         )
 
     model = apply_abliteration(
-        model, refusal_dir, args.skip_begin, args.skip_end, args.scale_factor
+        model,
+        refusal_dir,
+        config["skip-begin"],
+        config["skip-end"],
+        config["scale-factor"],
     )
-    print(f"Saving abliterated model to {args.output}...")
-    model.save_pretrained(args.output)
-    tokenizer.save_pretrained(args.output)
+    print(f"Saving abliterated model to {config["output"]}...")
+    model.save_pretrained(config["output"])
+    tokenizer.save_pretrained(config["output"])
