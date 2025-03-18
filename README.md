@@ -43,6 +43,7 @@ python chat.py -m <path_to_your_abliterated_model>
 
 ```shell
 python compare.py -a <model_a> -b <model_b>
+```
 
 ### Examples
 
