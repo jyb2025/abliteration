@@ -40,7 +40,7 @@ def collect_model_params(
 
 def compare_with_collected_params(
     params_a: dict[int, dict[str, dict[str, torch.Tensor]]],
-    model_b,
+    model_b: PreTrainedModel,
     layer_parent_modules: set,
 ) -> dict:
     differences = {}
@@ -77,7 +77,7 @@ def compare_with_collected_params(
 
             differences.setdefault(layer_num, {}).setdefault(submodule_path, {})[
                 param_name
-            ] = {"avg": avg_diff, "max": max_diff}
+            ] = {"avg": avg_diff, "max": max_diff, "tensor": diff}
 
     return differences
 
@@ -99,6 +99,7 @@ def print_differences(differences: dict) -> None:
                 print(f"    > {param_name}:")
                 print(f"      Avg diff: {diff['avg']:.6e}")
                 print(f"      Max diff: {diff['max']:.6e}")
+                print(f"      Tensor: {diff['tensor']}")
 
 
 def main():
