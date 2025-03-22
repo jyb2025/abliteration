@@ -78,6 +78,22 @@ Now your model will be abliterated and saved to `<output_dir>`. Once it finishes
 
 ## Advanced Usage
 
+### Use config files
+
+This repository now supports `.json` config file. This file should contain a `dict` of config key value pairs. For example:
+
+```json
+{
+    "model": "/absolute/path/to/your/model",
+    "output": "/output/dir",
+    "data-harmful": "/absolute/path/to/harmful-prompts.txt",
+    "scale-factor": 114,
+    "load-in-4bit": true
+}
+```
+
+Loading config file will **overwrite** command line arguments.
+
 ### Use your own prompts
 
 You can use your own prompts to abliterate your model. Supported file formats are `.txt`, `.parquet` and `.json`. Detailed formats are listed below:
