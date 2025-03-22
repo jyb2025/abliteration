@@ -92,6 +92,10 @@ This repository now supports `.json` config file. This file should contain a `di
 }
 ```
 
+```shell
+python abliterate.py -c config.json
+```
+
 Loading config file will **overwrite** command line arguments.
 
 ### Use your own prompts
