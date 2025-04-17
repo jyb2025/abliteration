@@ -1,12 +1,9 @@
 import gc
 import torch
 from tqdm import tqdm
-from typing import Union
-from transformers import (
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
-    PreTrainedModel,
-)
+from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
 
 def extract_hidden_states(raw_output) -> dict:
@@ -27,13 +24,13 @@ def extract_hidden_states(raw_output) -> dict:
 
 def compute_refusals(
     model: PreTrainedModel,
-    tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     harmful_list: list[str],
     harmless_list: list[str],
     layer_fraction: float = 0.6,
 ) -> torch.Tensor:
 
-    def welford(tokens: list, desc: str) -> torch.Tensor:
+    def welford(tokens: list[torch.Tensor], desc: str) -> torch.Tensor:
         mean = None
         count = 0
         for token in tqdm(tokens, desc=desc):
@@ -49,17 +46,17 @@ def compute_refusals(
             current_hidden = cpu_output["hidden_states"][0][layer_idx][:, pos, :]
             assert isinstance(current_hidden, torch.Tensor)
             current_hidden.detach()
-            
+
             batch_size = current_hidden.size(dim=0)
             total_count = count + batch_size
-            
+
             if mean is None:
                 mean = current_hidden.mean(dim=0)
             else:
                 delta = current_hidden - mean.squeeze(0)
                 mean = mean + (delta.sum(dim=0)) / total_count
             count = total_count
-            
+
             del raw_output, cpu_output, current_hidden
             torch.cuda.empty_cache()
         assert mean is not None
@@ -85,12 +82,12 @@ def compute_refusals(
     torch.cuda.empty_cache()
     gc.collect()
 
-    layer_idx = int(len(model.model.layers) * layer_fraction)
+    layer_idx = int(len(model.model.layers) * layer_fraction) # type: ignore
     pos = -1
 
-    harmful_mean = welford(harmful_tokens, "Generating harmful outputs")
+    harmful_mean = welford(harmful_tokens, "Generating harmful outputs") # type: ignore
     gc.collect()
-    harmless_mean = welford(harmless_tokens, "Generating harmless outputs")
+    harmless_mean = welford(harmless_tokens, "Generating harmless outputs") # type: ignore
     refusal_dir = harmful_mean - harmless_mean
     refusal_dir = refusal_dir / refusal_dir.norm()
     print(refusal_dir)

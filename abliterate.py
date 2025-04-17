@@ -3,11 +3,9 @@ import sys
 import torch
 import random
 from datasets import load_dataset
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    BitsAndBytesConfig,
-)
+from transformers.models.auto.tokenization_auto import AutoTokenizer
+from transformers.models.auto.modeling_auto import AutoModelForCausalLM
+from transformers.utils.quantization_config import BitsAndBytesConfig
 from utils.data import load_data
 from utils.compute import compute_refusals
 from utils.apply import apply_abliteration
@@ -65,7 +63,7 @@ if __name__ == "__main__":
 
     if config["deccp"]:
         deccp_list = load_dataset("augmxnt/deccp", split="censored")
-        harmful_list += deccp_list["text"]
+        harmful_list += deccp_list["text"] # type: ignore
 
     if isinstance(config["num-harmful"], int) and config["num-harmful"] > 0:
         harmful_list = random.sample(harmful_list, config["num-harmful"])
