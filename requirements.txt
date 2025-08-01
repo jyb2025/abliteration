@@ -3,6 +3,6 @@ bitsandbytes
 datasets
 huggingface-hub
 pandas
-torch
+torch==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124
 tqdm
 transformers
